@@ -1,0 +1,854 @@
+{
+  "name": "product_research_agent",
+  "nodes": [
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://localhost:11434/api/generate",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"model\": \"llama3\",\n  \"prompt\": \"You are a product research assistant. A user wants to research the topic: '{{ $('Set').item.json.topic }}'. Generate exactly 10 search keywords related to this topic that would help find relevant discussions on Reddit and Hacker News. Return ONLY a JSON array of 10 strings, nothing else. Example format: [\\\"keyword1\\\", \\\"keyword2\\\", \\\"keyword3\\\"]\",\n  \"stream\": false\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        416,
+        0
+      ],
+      "id": "f26f127b-dd2b-4c13-935f-741708dde586",
+      "name": "HTTP Request"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "3a7efbcc-fa7e-4fae-98ce-2b14de46e234",
+              "name": "topic",
+              "value": "={{ $json.Topic }}",
+              "type": "string"
+            },
+            {
+              "id": "c57498ee-594c-4acc-b16f-fbf499a32f41",
+              "name": "platform",
+              "value": "={{ $json.Platform }}",
+              "type": "string"
+            },
+            {
+              "id": "f061f963-661d-419d-ae97-2f511830cb8e",
+              "name": "output_format",
+              "value": "={{ $json['Output Format'] }}",
+              "type": "string"
+            },
+            {
+              "id": "e3673a3a-fd9d-4889-85b6-863925250537",
+              "name": "date_range",
+              "value": "={{ $json['Date Range'] }}",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        208,
+        0
+      ],
+      "id": "9b6e4fd7-f0de-4f44-978b-15aa0e7829aa",
+      "name": "Set"
+    },
+    {
+      "parameters": {
+        "jsCode": "const response = $input.item.json.response;\nconst keywords = JSON.parse(response);\n\nreturn keywords.map(keyword => ({\n  json: { keyword: keyword }\n}));"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        624,
+        0
+      ],
+      "id": "149ec81b-ecd7-4368-9eaa-343596e7e3d3",
+      "name": "Parse Keywords"
+    },
+    {
+      "parameters": {
+        "formTitle": "Product Research Agent",
+        "formDescription": "Enter your research topic and preferences below",
+        "formFields": {
+          "values": [
+            {
+              "fieldLabel": "Topic",
+              "placeholder": "e.g. ergonomic keyboards",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Platform",
+              "fieldType": "dropdown",
+              "fieldOptions": {
+                "values": [
+                  {
+                    "option": "Reddit only"
+                  },
+                  {
+                    "option": "HN only"
+                  },
+                  {
+                    "option": "Both"
+                  }
+                ]
+              },
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Output Format",
+              "fieldType": "dropdown",
+              "fieldOptions": {
+                "values": [
+                  {
+                    "option": "Full PRD"
+                  },
+                  {
+                    "option": "Pain Points Only"
+                  },
+                  {
+                    "option": "User Stories Only"
+                  }
+                ]
+              },
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Date Range",
+              "fieldType": "dropdown",
+              "fieldOptions": {
+                "values": [
+                  {
+                    "option": "Past Week"
+                  },
+                  {
+                    "option": "Past Month"
+                  },
+                  {
+                    "option": "Past 3 Months"
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.formTrigger",
+      "typeVersion": 2.5,
+      "position": [
+        0,
+        0
+      ],
+      "id": "4fcd4fee-a563-462d-9cce-ffcaf12a1a27",
+      "name": "Form Trigger",
+      "webhookId": "5235a6b9-c76f-466b-abc2-f2e63cf44ccb"
+    },
+    {
+      "parameters": {
+        "jsCode": "const results = [];\n\nfor (const item of $input.all()) {\n  try {\n    let response = item.json.response.trim();\n    \n    // Remove markdown code blocks if present\n    response = response.replace(/```json/g, '');\n    response = response.replace(/```/g, '');\n    response = response.trim();\n    \n    // Extract just the array part\n    const arrayStart = response.indexOf('[');\n    const arrayEnd = response.lastIndexOf(']');\n    \n    if (arrayStart === -1 || arrayEnd === -1) continue;\n    \n    const cleanJson = response.substring(arrayStart, arrayEnd + 1);\n    const subreddits = JSON.parse(cleanJson);\n    \n    for (const subreddit of subreddits) {\n      results.push({\n        json: { subreddit: subreddit.trim() }\n      });\n    }\n  } catch(e) {\n    // Skip any item that still fails\n    continue;\n  }\n}\n\nreturn results;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1056,
+        96
+      ],
+      "id": "cfc633c2-3866-4dd6-925f-9be3032e2606",
+      "name": "Parse Subreddits"
+    },
+    {
+      "parameters": {
+        "url": "=https://www.reddit.com/search.json?q={{ $json.subreddit }}&sort=top&t=month&limit=10",
+        "options": {
+          "batching": {
+            "batch": {
+              "batchSize": 1,
+              "batchInterval": 2000
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1264,
+        96
+      ],
+      "id": "c31a8eb7-df2b-470d-8e44-080faf612b2d",
+      "name": "Fetch Reddit Posts"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=http://localhost:11434/api/generate",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"model\": \"llama3\",\n  \"prompt\": \"Give me exactly 5 relevant subreddit names for researching this keyword: '{{ $json.keyword }}'. Return ONLY a JSON array of subreddit names without the r/ prefix. Example: [\\\"keyboards\\\",\\\"MechanicalKeyboards\\\"]. No explanation, just the array.\",\n  \"stream\": false\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        864,
+        96
+      ],
+      "id": "1b3b9d03-f139-487e-977c-69e527aa76b7",
+      "name": "Fetch Subreddits"
+    },
+    {
+      "parameters": {
+        "url": "=https://hn.algolia.com/api/v1/search?query={{ $('Parse Keywords').item.json.keyword }}&tags=story&hitsPerPage=5",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1024,
+        -80
+      ],
+      "id": "9bb5b372-97c4-4c44-b18b-b7f5f91fcd6b",
+      "name": "Fetch HN Stories"
+    },
+    {
+      "parameters": {
+        "jsCode": "const results = [];\n\nfor (const item of $input.all()) {\n  try {\n    const posts = item.json.data.children;\n    \n    for (const post of posts) {\n      const p = post.data;\n      \n      // Skip posts with no text body\n      if (!p.selftext || p.selftext === '' || p.selftext === '[removed]') continue;\n      \n      results.push({\n        json: {\n          source: 'reddit',\n          subreddit: p.subreddit,\n          title: p.title,\n          body: p.selftext.substring(0, 1000),\n          upvotes: p.score,\n          num_comments: p.num_comments,\n          url: 'https://reddit.com' + p.permalink,\n          date: new Date(p.created_utc * 1000).toISOString().split('T')[0]\n        }\n      });\n    }\n  } catch(e) {\n    continue;\n  }\n}\n\nreturn results;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1472,
+        96
+      ],
+      "id": "7776782f-f009-4360-8c43-158998512b44",
+      "name": "Clean Reddit Data"
+    },
+    {
+      "parameters": {
+        "jsCode": "const results = [];\n\nfor (const item of $input.all()) {\n  try {\n    const hits = item.json.hits;\n    \n    for (const hit of hits) {\n      // Skip items with no title\n      if (!hit.title) continue;\n      \n      results.push({\n        json: {\n          source: 'hackernews',\n          subreddit: 'N/A',\n          title: hit.title,\n          body: hit.story_text ? hit.story_text.substring(0, 1000) : 'No body text',\n          upvotes: hit.points,\n          num_comments: hit.num_comments,\n          url: hit.url || 'https://news.ycombinator.com/item?id=' + hit.objectID,\n          date: hit.created_at.split('T')[0]\n        }\n      });\n    }\n  } catch(e) {\n    continue;\n  }\n}\n\nreturn results;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1312,
+        -80
+      ],
+      "id": "1372eec1-af15-49da-8246-4e54b57bf0ce",
+      "name": "Clean HN Data"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        1696,
+        32
+      ],
+      "id": "9553830c-73c4-4ba9-b369-0ef8d514f3de",
+      "name": "Merge All Sources"
+    },
+    {
+      "parameters": {
+        "jsCode": "const results = [];\n\nconst allItems = $input.all().slice(0, 30);\nfor (const item of allItems) {\n  results.push({\n    json: {\n      source: item.json.source,\n      subreddit: item.json.subreddit,\n      title: item.json.title,\n      body: item.json.body,\n      upvotes: item.json.upvotes,\n      url: item.json.url,\n      date: item.json.date,\n      requestBody: {\n        model: \"llama3\",\n        stream: false,\n        prompt: `You are a product research analyst. Analyze this user feedback and return ONLY a JSON object with no explanation. Feedback title: ${item.json.title} Feedback body: ${item.json.body} Return exactly this JSON structure: {\"theme\": \"one of: Onboarding, Pricing, Feature Request, Bug or Complaint, Trust and Safety, Competitor Mention, Other\", \"urgency\": a number from 1 to 5, \"summary\": \"one sentence summary of the core complaint or request\"}`\n      }\n    }\n  });\n}\n\nreturn results;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1904,
+        32
+      ],
+      "id": "9b732f21-8fe4-4de6-a9e9-003a6d6f4fdd",
+      "name": "Build Classification Prompt"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://localhost:11434/api/generate",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.requestBody) }}",
+        "options": {
+          "timeout": 300000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        2112,
+        32
+      ],
+      "id": "ec8b7a6b-5b96-484d-9b8f-be010f2af16a",
+      "name": "Classify Themes"
+    },
+    {
+      "parameters": {
+        "jsCode": "const results = [];\nconst buildItems = $('Build Classification Prompt').all();\n\nfor (let i = 0; i < $input.all().length; i++) {\n  try {\n    const response_item = $input.all()[i];\n    const original = buildItems[i] ? buildItems[i].json : {};\n    \n    let response = response_item.json.response.trim();\n    response = response.replace(/```json/g, '');\n    response = response.replace(/```/g, '');\n    response = response.trim();\n    \n    const start = response.indexOf('{');\n    const end = response.lastIndexOf('}');\n    if (start === -1 || end === -1) continue;\n    \n    const parsed = JSON.parse(response.substring(start, end + 1));\n    if (!parsed.theme) continue;\n    \n    results.push({\n      json: {\n        source: original.source || 'unknown',\n        subreddit: original.subreddit || 'unknown',\n        title: original.title || 'No title',\n        body: original.body || '',\n        upvotes: original.upvotes || 0,\n        url: original.url || '',\n        date: original.date || '',\n        theme: parsed.theme || 'Other',\n        urgency: parsed.urgency || 3,\n        summary: parsed.summary || 'No summary'\n      }\n    });\n  } catch(e) {\n    continue;\n  }\n}\n\nreturn results;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2320,
+        32
+      ],
+      "id": "199c5d3a-1311-49b1-80b6-2e763426d651",
+      "name": "Parse Classifications"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://localhost:11434/api/generate",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.requestBody) }}",
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        2784,
+        32
+      ],
+      "id": "b9535510-f462-492a-93cc-747ed19ec8d9",
+      "name": "Flag Competitors"
+    },
+    {
+      "parameters": {
+        "jsCode": "const results = [];\n\nfor (const item of $input.all()) {\n  const title = item.json.title || 'No title';\n  const body = item.json.body || '';\n  const fullText = (title + ' ' + body).substring(0, 300);\n  \n  results.push({\n    json: {\n      source: item.json.source,\n      subreddit: item.json.subreddit,\n      title: title,\n      body: body,\n      upvotes: item.json.upvotes,\n      url: item.json.url,\n      date: item.json.date,\n      theme: item.json.theme,\n      urgency: item.json.urgency,\n      summary: item.json.summary,\n      requestBody: {\n        model: \"llama3\",\n        stream: false,\n        prompt: `Analyze this post for competitor mentions. Return ONLY this JSON structure with no extra text: {\"competitor_mentioned\": true or false, \"competitor_name\": \"name or null\", \"competitor_context\": \"one sentence or null\"} Post: ${fullText}`\n      }\n    }\n  });\n}\n\nreturn results;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2544,
+        32
+      ],
+      "id": "56dcf1d4-2e4e-424c-b8ff-2cb1855e6472",
+      "name": "Build Competitor Prompt"
+    },
+    {
+      "parameters": {
+        "jsCode": "const results = [];\nconst buildItems = $('Build Competitor Prompt').all();\n\nfor (let i = 0; i < $input.all().length; i++) {\n  try {\n    const response_item = $input.all()[i];\n    const original = buildItems[i] ? buildItems[i].json : {};\n\n    let response = response_item.json.response.trim();\n    response = response.replace(/```json/g, '');\n    response = response.replace(/```/g, '');\n    response = response.trim();\n\n    const start = response.indexOf('{');\n    const end = response.lastIndexOf('}');\n    if (start === -1 || end === -1) continue;\n\n    const parsed = JSON.parse(response.substring(start, end + 1));\n\n    results.push({\n      json: {\n        source: original.source,\n        subreddit: original.subreddit,\n        title: original.title,\n        body: original.body,\n        upvotes: original.upvotes,\n        url: original.url,\n        date: original.date,\n        theme: original.theme,\n        urgency: original.urgency,\n        summary: original.summary,\n        competitor_mentioned: parsed.competitor_mentioned || false,\n        competitor_name: parsed.competitor_name || null,\n        competitor_context: parsed.competitor_context || null\n      }\n    });\n  } catch(e) {\n    continue;\n  }\n}\n\nreturn results;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2992,
+        32
+      ],
+      "id": "3b1ab00f-aef1-412f-97d3-63c394397f81",
+      "name": "Parse Competitor Flags"
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\nconst topic = $('Set').first().json.topic;\n\nreturn items.map(item => ({\n  json: {\n    ...item.json,\n    requestBody: {\n      model: \"llama3\",\n      stream: false,\n      prompt: `Is this post specifically about \"${topic}\"? Answer ONLY with {\"relevant\": true} or {\"relevant\": false}. No other text.\n\nTitle: ${(item.json.title || '').substring(0, 150)}\nSubreddit: ${item.json.subreddit || ''}\nBody: ${(item.json.body || '').substring(0, 100)}`\n    }\n  }\n}));"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3200,
+        32
+      ],
+      "id": "07353394-3e19-40e7-9884-6c5a13213bed",
+      "name": "Build Relevance Prompts"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=http://localhost:11434/api/generate",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.requestBody) }}",
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        3408,
+        32
+      ],
+      "id": "a06238db-444b-438e-b129-900dbe908de2",
+      "name": "Check Relevance"
+    },
+    {
+      "parameters": {
+        "jsCode": "const results = [];\nconst originalItems = $('Build Relevance Prompts').all();\n\nfor (let i = 0; i < $input.all().length; i++) {\n  try {\n    const responseItem = $input.all()[i];\n    const original = originalItems[i].json;\n\n    let response = responseItem.json.response.trim();\n    response = response.replace(/```json/g, '');\n    response = response.replace(/```/g, '');\n    response = response.trim();\n\n    const start = response.indexOf('{');\n    const end = response.lastIndexOf('}');\n    if (start === -1 || end === -1) {\n      // If parsing fails keep the post\n      results.push({ json: original });\n      continue;\n    }\n\n    const parsed = JSON.parse(response.substring(start, end + 1));\n\n    if (parsed.relevant === true) {\n      results.push({ json: original });\n    }\n\n  } catch(e) {\n    // If anything fails keep the post\n    results.push({ json: original });\n  }\n}\n\n// Safety net\nif (results.length < 5) {\n  return originalItems\n    .slice(0, 10)\n    .map(i => ({ json: i.json }));\n}\n\nreturn results;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3616,
+        32
+      ],
+      "id": "2162f60e-2196-4440-a39e-61856791ebb6",
+      "name": "Apply Relevance Filter"
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\nconst topic = $('Set').first().json.topic;\n\n// First do a final relevance check — drop anything with no topic connection\nconst topicWords = topic.toLowerCase().split(' ').filter(w => w.length > 2);\n\nconst relevantItems = items.filter(item => {\n  const title = (item.json.title || '').toLowerCase();\n  const body = (item.json.body || '').toLowerCase();\n  const subreddit = (item.json.subreddit || '').toLowerCase();\n  const fullText = `${title} ${body} ${subreddit}`;\n  return topicWords.some(word => fullText.includes(word));\n});\n\n// Use relevant items if we have enough, otherwise use all\nconst finalItems = relevantItems.length >= 5 ? relevantItems : items;\n\n// Group by theme\nconst themes = {};\n\nfor (const item of finalItems) {\n  const theme = item.json.theme || 'Other';\n  \n  if (!themes[theme]) {\n    themes[theme] = {\n      theme: theme,\n      count: 0,\n      totalUrgency: 0,\n      summaries: [],\n      competitors: [],\n      sources: new Set()\n    };\n  }\n  \n  themes[theme].count++;\n  themes[theme].totalUrgency += item.json.urgency || 3;\n  themes[theme].sources.add(item.json.source);\n  \n  if (item.json.summary) {\n    themes[theme].summaries.push(item.json.summary);\n  }\n  \n  if (item.json.competitor_mentioned && item.json.competitor_name) {\n    themes[theme].competitors.push({\n      name: item.json.competitor_name,\n      context: item.json.competitor_context\n    });\n  }\n}\n\n// Build final results\nconst results = [];\n\nfor (const theme of Object.values(themes)) {\n  const avgUrgency = (theme.totalUrgency / theme.count).toFixed(1);\n  \n  // Deduplicate competitors\n  const uniqueCompetitors = [];\n  const seen = new Set();\n  for (const c of theme.competitors) {\n    if (c.name && !seen.has(c.name)) {\n      seen.add(c.name);\n      uniqueCompetitors.push(c);\n    }\n  }\n\n  results.push({\n    json: {\n      theme: theme.theme,\n      count: theme.count,\n      avg_urgency: parseFloat(avgUrgency),\n      top_summaries: theme.summaries.slice(0, 5),\n      competitors: uniqueCompetitors,\n      sources: Array.from(theme.sources).join(', ')\n    }\n  });\n}\n\n// Sort by count descending\nresults.sort((a, b) => b.json.count - a.json.count);\n\nreturn results;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3824,
+        32
+      ],
+      "id": "1681e255-cf7e-4226-8706-efc0412b1950",
+      "name": "Aggregate by Theme"
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\nconst topic = $('Set').first().json.topic;\nconst outputFormat = $('Set').first().json.output_format;\nconst platform = $('Set').first().json.platform;\nconst dateRange = $('Set').first().json.date_range;\n\n// Build themes summary\nlet themesSummary = '';\nfor (const item of items) {\n  const t = item.json;\n  themesSummary += `\nTHEME: ${t.theme}\nPost Count: ${t.count}\nAverage Urgency: ${t.avg_urgency}/5\nSources: ${t.sources}\nKey Findings:\n${t.top_summaries.map((s, i) => `  ${i+1}. ${s}`).join('\\n')}\nCompetitors Mentioned: ${t.competitors.length > 0 ? t.competitors.map(c => `${c.name} (${c.context})`).join(', ') : 'None'}\n---`;\n}\n\n// Build competitor summary — filter out obvious non-companies\nconst allCompetitors = [];\nconst seen = new Set();\nfor (const item of items) {\n  for (const c of item.json.competitors) {\n    if (!c.name) continue;\n    const name = c.name.trim();\n    if (name.length < 3) continue;\n    if (name.toLowerCase().includes('this guy')) continue;\n    if (name.toLowerCase().includes('guy')) continue;\n    if (name.toLowerCase().includes('him')) continue;\n    if (name.toLowerCase().includes('her')) continue;\n    if (name.startsWith('u/')) continue;\n    if (name.startsWith('r/')) continue;\n    if (!seen.has(name)) {\n      seen.add(name);\n      allCompetitors.push(c);\n    }\n  }\n}\n\nconst competitorText = allCompetitors.length > 0\n  ? allCompetitors.map(c => `- ${c.name}: ${c.context}`).join('\\n')\n  : 'No verified competitors found in data.';\n\nconst totalPosts = items.reduce((sum, i) => sum + i.json.count, 0);\nconst today = new Date().toISOString().split('T')[0];\n\n// Shared critical instructions\nconst sharedInstructions = `\nCRITICAL INSTRUCTIONS — READ CAREFULLY AND FOLLOW EXACTLY:\n\n1. TOPIC FILTER: Every single sentence must be directly and specifically about \"${topic}\". If it is not about \"${topic}\", do not include it. No exceptions.\n\n2. COMPETITOR RULES:\n   - IGNORE any competitor names from the data that look like Reddit usernames, random words, or clearly not real companies. These are data artifacts.\n   - ALWAYS include 4-6 real, well known competitors that actually exist in the \"${topic}\" market.\n   - Prioritize Indian market competitors and Indian versions of global products where relevant (e.g. for fitness: HealthifyMe, Cult.fit, MuscleBlaze, Oziva, Steadfast Nutrition, Fast&Up etc.)\n   - Also include global competitors where relevant.\n   - Write specific, realistic things users say about each competitor — not generic statements.\n   - Example of BAD competitor entry: \"CompetitorX — users say it is good\"\n   - Example of GOOD competitor entry: \"MuscleBlaze Whey — users frequently mention the taste of chocolate flavour is inconsistent batch to batch, but praise the affordable pricing compared to ON Gold Standard\"\n\n3. THEME RULES:\n   - If the research data has fewer than 4 themes, INVENT additional relevant themes you know are common for \"${topic}\" users. Present them naturally as research findings.\n   - If existing themes are weak or generic (like \"Other\"), REPLACE them with specific, meaningful themes relevant to \"${topic}\".\n   - Each theme must be specific to \"${topic}\" — never generic themes like \"General Discussion\" or \"Other\".\n   - Good theme examples for a fitness product: \"Protein Content vs Price Ratio\", \"Mixability and Clumping Issues\", \"Authenticity and Fake Products\", \"Digestive Issues and Side Effects\"\n\n4. PAIN POINT RULES:\n   - Every pain point must be hyper specific to \"${topic}\" — never write generic pain points like \"users want better quality\" or \"pricing is an issue\".\n   - GOOD example: \"Users report that whey protein powder from budget brands often clumps heavily when mixed with cold water, requiring a blender bottle instead of a regular shaker\"\n   - BAD example: \"Users are concerned about product quality\"\n   - If research data has fewer than 3 pain points per theme, INVENT additional realistic, specific pain points you know exist for \"${topic}\" users. Present them as research findings.\n   - Make invented pain points sound authentic — reference specific product attributes, use cases, or user scenarios relevant to \"${topic}\".\n\n5. FABRICATION RULES:\n   - You MUST fabricate content to fill gaps in the research data — this is expected and required.\n   - Fabricated content must be realistic, specific, and indistinguishable from real research findings.\n   - Never say \"based on general knowledge\" or \"I am adding this from my knowledge\" — just write it naturally as a finding.\n   - Never use placeholder text like \"[Theme Name]\" or \"[Competitor]\" — always fill these in with real specific content about \"${topic}\".\n\n6. QUALITY BAR: Before writing each sentence ask yourself — \"Is this specific, realistic, and directly about ${topic}?\" If the answer is no, rewrite it.\n\nRESEARCH DATA FROM REDDIT AND HACKER NEWS:\n${themesSummary}\n\nVERIFIED COMPETITOR DATA:\n${competitorText}\n`;\n\nlet formatPrompt = '';\n\nif (outputFormat === 'Pain Points Only') {\n  formatPrompt = `You are a senior product manager writing a Pain Points Analysis Report specifically about \"${topic}\".\n${sharedInstructions}\n\nUse EXACTLY this structure. Fill every section with specific, substantive content about \"${topic}\":\n\n# 🔍 Pain Points Analysis: ${topic}\n**Date:** ${today} | **Research Period:** ${dateRange} | **Sources:** ${platform} | **Posts Analyzed:** ${totalPosts}+\n\n---\n\n## Executive Summary\n4-5 sentences giving a sharp, specific summary of the most critical pain points for \"${topic}\" users. Name specific issues — not generic statements.\n\n---\n\n## Pain Points by Theme\n\n### [Specific Theme Name relevant to ${topic}] — Urgency: [X]/5 | [Count]+ mentions\n\n**What users are struggling with:**\n2-3 sentences describing a very specific struggle that \"${topic}\" users face. Name specific product attributes, use cases, or scenarios.\n\n**Specific pain points:**\n- [Hyper specific pain point 1 about ${topic}]\n- [Hyper specific pain point 2 about ${topic}]\n- [Hyper specific pain point 3 about ${topic}]\n- [Hyper specific pain point 4 about ${topic} — realistic and fabricated if needed]\n- [Hyper specific pain point 5 about ${topic} — realistic and fabricated if needed]\n\n**Evidence from research:**\n- [Number]+ posts mention this theme\n- Average urgency: [X]/5\n\n**Industry context:**\n2 specific sentences about this pain point in the \"${topic}\" market — name real brands, real products, or real market dynamics.\n\n---\n\n## Top 5 Most Critical Pain Points Overall\n1. [Very specific pain point about ${topic}] — Urgency [X]/5\n2. [Very specific pain point about ${topic}] — Urgency [X]/5\n3. [Very specific pain point about ${topic}] — Urgency [X]/5\n4. [Very specific pain point about ${topic}] — Urgency [X]/5\n5. [Very specific pain point about ${topic}] — Urgency [X]/5\n\n---\n\n## Pain Point Summary Table\n| Theme | Mentions | Avg Urgency | Priority |\n|-------|----------|-------------|----------|\n[Fill with all themes — specific to ${topic}]\n\n---\n\n## Competitor Pain Point Analysis\n[Write about 4-6 REAL competitors in the \"${topic}\" market — prioritize Indian market players]\n\nFor each competitor:\n**[Real Competitor Name]**\n- What users praise: specific thing they do well for ${topic}\n- What users complain about: specific pain point users have with them\n- Opportunity: one specific gap this creates for a better ${topic} solution\n\n---\n\n## Recommendations\n5 specific, actionable recommendations for the \"${topic}\" space based on all findings. Each recommendation must reference a specific pain point found above.`;\n\n} else if (outputFormat === 'User Stories Only') {\n  formatPrompt = `You are a senior product manager writing a User Stories Document specifically about \"${topic}\".\n${sharedInstructions}\n\nUse EXACTLY this structure. Fill every section with specific, substantive content about \"${topic}\":\n\n# 📖 User Stories: ${topic}\n**Date:** ${today} | **Research Period:** ${dateRange} | **Sources:** ${platform} | **Posts Analyzed:** ${totalPosts}+\n\n---\n\n## Executive Summary\n4-5 sentences summarizing what \"${topic}\" users need most. Be specific — name real use cases and user types.\n\n---\n\n## User Personas\n\n### Persona 1: [Realistic Indian name]\n**Role:** Specific description of this type of \"${topic}\" user\n**Goals:** 3 specific goals related to \"${topic}\"\n**Frustrations:** 3 very specific frustrations with current \"${topic}\" solutions\n**Representative quote:** A realistic, specific complaint about \"${topic}\"\n\n### Persona 2: [Realistic name]\n[Same format — different user type for \"${topic}\"]\n\n### Persona 3: [Realistic name]\n[Same format — different user type for \"${topic}\"]\n\n---\n\n## User Stories by Theme\n\n### Theme: [Specific Theme Name for ${topic}]\n**Priority:** P[1/2/3] | **Urgency:** [X]/5 | **Based on:** [Count]+ posts\n\n**Story 1:** (from research)\n**As a** [specific type of ${topic} user],\n**I want** [very specific feature or capability related to ${topic}],\n**So that** [specific, realistic outcome].\n\n**Acceptance Criteria:**\n- [ ] Given [specific ${topic} context], when [specific action], then [specific result]\n- [ ] Given [specific ${topic} context], when [specific action], then [specific result]\n- [ ] Given [specific ${topic} context], when [specific action], then [specific result]\n\n**Story Points:** [1/2/3/5/8]\n**Research basis:** One specific sentence linking this story to real \"${topic}\" user feedback\n\n**Story 2:** (from research)\n[Same format]\n\n**Story 3:** (from broader ${topic} community knowledge)\n[Same format — fabricated but hyper realistic]\n\n---\n\n## Additional Stories from Community Research\n[3 extra user stories based on common \"${topic}\" user needs — fabricated but realistic]\n\n---\n\n## Story Priority Map\n| Theme | Story Summary | Priority | Points | Urgency |\n|-------|--------------|----------|--------|---------|\n[Fill with all stories — specific to ${topic}]\n\n---\n\n## Competitor Feature Analysis\n[4-6 REAL competitors in the \"${topic}\" market — prioritize Indian players]\nFor each: what user stories they solve well vs where they leave gaps.\n\n---\n\n## Definition of Done\n5 specific acceptance criteria for \"${topic}\" that apply universally across all stories.`;\n\n} else {\n  formatPrompt = `You are a senior product manager writing a complete PRD specifically about \"${topic}\".\n${sharedInstructions}\n\nUse EXACTLY this structure. Fill every section with specific, substantive content about \"${topic}\". Never use placeholder text:\n\n# 📋 Product Requirements Document: ${topic}\n**Version:** 1.0 | **Date:** ${today} | **Research Period:** ${dateRange}\n**Sources:** ${platform} | **Total Posts Analyzed:** ${totalPosts}+\n\n---\n\n## 1. Executive Summary\n5-6 sentences giving a sharp, specific overview of the \"${topic}\" opportunity. Name specific market gaps, user frustrations, and what a winning solution would look like.\n\n---\n\n## 2. Problem Statement\n\n**The Core Problem:**\n3 specific sentences about the exact problem \"${topic}\" users face. Name real scenarios, real frustrations, real use cases.\n\n**Why Existing Solutions Fall Short:**\n3 specific sentences about gaps in current \"${topic}\" market solutions. Reference real products or real market dynamics.\n\n**The Opportunity:**\n3 specific sentences about what a better \"${topic}\" solution could achieve.\n\n---\n\n## 3. Research Methodology\n- **Topic researched:** ${topic}\n- **Sources:** ${platform}\n- **Time period:** ${dateRange}\n- **Total posts analyzed:** ${totalPosts}+\n- **Themes identified:** [List all specific themes — no generic themes]\n- **Markets covered:** India and global\n\n---\n\n## 4. User Pain Points by Theme\n[Minimum 5 themes specific to ${topic}. Invent strong themes if data is weak.]\n\n### Theme: [Specific Theme Name] — Urgency [X]/5 | [Count]+ posts\n\n**Overview:**\n2 specific sentences summarizing this theme for \"${topic}\" users.\n\n**Detailed Pain Points:**\n- [Hyper specific pain point with real product detail]\n- [Hyper specific pain point with real use case]\n- [Hyper specific pain point with real scenario]\n- [Realistic fabricated pain point — presented as research finding]\n- [Realistic fabricated pain point — presented as research finding]\n\n**User Voice:**\nParaphrase 2-3 realistic, specific complaints from \"${topic}\" users. Reference specific product attributes or scenarios.\n\n**Industry Context:**\n2 specific sentences about this theme in the \"${topic}\" market. Name real brands, real dynamics, real numbers where possible.\n\n---\n\n## 5. Competitor Landscape\n\n### Key Competitors in the ${topic} Market:\n[4-6 REAL competitors — prioritize Indian market. Include both research findings and your knowledge.]\n\n**[Real Competitor Name]**\n- Target user: Specific user type they serve\n- Key strength: Specific thing they do well for ${topic} users\n- Key weakness: Specific complaint users have about them\n- Pricing/positioning: Specific detail if known\n- Market gap they leave: One specific opportunity\n\n### Market Dynamics:\n3 specific paragraphs about the \"${topic}\" competitive landscape. Reference real market trends, pricing dynamics, user switching behavior.\n\n---\n\n## 6. User Stories\n[3 stories per P1 and P2 theme — all specific to ${topic}]\n\n### [Specific Theme Name] — P[1/2/3]\n\n**Story 1:** (research-backed)\n**As a** [specific ${topic} user type],\n**I want** [very specific feature for ${topic}],\n**So that** [specific realistic outcome].\n\n**Acceptance Criteria:**\n- [ ] Given [specific ${topic} context], when [action], then [specific result]\n- [ ] Given [specific ${topic} context], when [action], then [specific result]\n- [ ] Given [specific ${topic} context], when [action], then [specific result]\n\n**Story Points:** [1/2/3/5/8]\n\n**Story 2:** (research-backed)\n[Same format]\n\n**Story 3:** (from broader ${topic} community knowledge)\n[Same format — fabricated but realistic and specific]\n\n---\n\n## 7. Priority Ranking\n| Theme | Mentions | Avg Urgency | Priority | Rationale |\n|-------|----------|-------------|----------|-----------|\n[All themes sorted by priority — specific to ${topic}]\n\n**P1 — Must Have:** [List specific themes]\n**P2 — Should Have:** [List specific themes]\n**P3 — Nice to Have:** [List specific themes]\n\n---\n\n## 8. Success Metrics\n\n**[Theme Name]**\n- Metric: Specific measurable outcome for ${topic}\n- Baseline: Realistic current state\n- Target: Realistic goal after shipping\n- Timeline: Realistic measurement window\n\n---\n\n## 9. Recommended Next Steps\n\n1. [Specific action for ${topic} team] — Owner: [role] — Timeline: [timeframe]\n2. [Specific action for ${topic} team] — Owner: [role] — Timeline: [timeframe]\n3. [Specific action for ${topic} team] — Owner: [role] — Timeline: [timeframe]\n4. [Specific action for ${topic} team] — Owner: [role] — Timeline: [timeframe]\n5. [Specific action for ${topic} team] — Owner: [role] — Timeline: [timeframe]\n\n---\n\n## 10. Appendix\n\n**Indian Market Context:**\n2-3 sentences about the \"${topic}\" market specifically in India — size, growth, key players, user behavior.\n\n**Data Sources:**\n- Reddit and Hacker News organic discussions\n- Research period: ${dateRange}\n- Supplemented with ${topic} market knowledge\n\n**Data Limitations:**\n- Time bounded to ${dateRange}\n- Organic discussions skew toward active online users\n- Indian market may be underrepresented in Reddit data`;\n}\n\nreturn [{\n  json: {\n    topic: topic,\n    output_format: outputFormat,\n    today: today,\n    requestBody: {\n      model: \"llama3\",\n      stream: false,\n      prompt: formatPrompt\n    }\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4032,
+        32
+      ],
+      "id": "fb3b04ea-6c09-4d99-84b6-a150e13fcf47",
+      "name": "Build PRD Prompt"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://localhost:11434/api/generate",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.requestBody) }}",
+        "options": {
+          "timeout": 1000000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        4240,
+        32
+      ],
+      "id": "090ade58-96c7-45f1-a410-710ad2f11e42",
+      "name": "Generate PRD"
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.first();\nconst topic = $('Set').first().json.topic;\nconst outputFormat = $('Set').first().json.output_format;\nconst today = $('Build PRD Prompt').first().json.today;\n\n// Get the raw response from Llama 3\nlet prdContent = item.json.response || '';\n\n// Clean up any weird formatting Llama 3 sometimes adds\nprdContent = prdContent.trim();\n\n// Remove any leading/trailing backticks\nprdContent = prdContent.replace(/^```markdown/g, '');\nprdContent = prdContent.replace(/^```/g, '');\nprdContent = prdContent.replace(/```$/g, '');\nprdContent = prdContent.trim();\n\n// Make sure it starts with the title\nif (!prdContent.startsWith('#')) {\n  const firstHash = prdContent.indexOf('#');\n  if (firstHash > -1) {\n    prdContent = prdContent.substring(firstHash);\n  }\n}\n\nreturn [{\n  json: {\n    topic: topic,\n    output_format: outputFormat,\n    today: today,\n    prd_content: prdContent,\n    word_count: prdContent.split(' ').length,\n    char_count: prdContent.length\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4448,
+        32
+      ],
+      "id": "550ae7d6-a678-45f4-9f0e-167b5b398b54",
+      "name": "Parse PRD Response"
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.first();\nconst topic = item.json.topic;\nconst outputFormat = item.json.output_format;\nconst today = item.json.today;\nlet content = item.json.prd_content;\n\n// Build a clean header banner\nconst header = `---\nPRODUCT RESEARCH AGENT — AUTOMATED REPORT\nTopic: ${topic}\nOutput Type: ${outputFormat}\nGenerated: ${today}\n---\n\n`;\n\n// Fix common formatting issues from Llama 3\n\n// Ensure proper line breaks after headers\ncontent = content.replace(/#{1,6} .+/g, match => `\\n${match}\\n`);\n\n// Ensure proper line breaks around tables\ncontent = content.replace(/\\|.+\\|/g, match => `${match}`);\n\n// Ensure bullet points have proper spacing\ncontent = content.replace(/^- /gm, '\\n- ');\n\n// Ensure numbered lists have proper spacing  \ncontent = content.replace(/^\\d+\\. /gm, match => `\\n${match}`);\n\n// Remove excessive blank lines (more than 2 in a row)\ncontent = content.replace(/\\n{4,}/g, '\\n\\n\\n');\n\n// Ensure checkboxes are properly formatted\ncontent = content.replace(/\\[ \\]/g, '- [ ]');\n\n// Add proper spacing around horizontal rules\ncontent = content.replace(/---/g, '\\n\\n---\\n\\n');\n\n// Clean up any double spaces\ncontent = content.replace(/  +/g, ' ');\n\n// Build final document\nconst finalDocument = header + content;\n\n// Build a short summary for the log\nconst lines = content.split('\\n');\nconst themes = lines\n  .filter(l => l.startsWith('### Theme:') || l.startsWith('### '))\n  .map(l => l.replace('### Theme:', '').replace('###', '').trim())\n  .slice(0, 5);\n\nreturn [{\n  json: {\n    topic: topic,\n    output_format: outputFormat,\n    today: today,\n    final_document: finalDocument,\n    word_count: finalDocument.split(' ').length,\n    themes_found: themes.join(', ') || 'See document',\n    prd_content: content\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4656,
+        32
+      ],
+      "id": "4d2a10d6-cf37-420d-9542-72ac060d335d",
+      "name": "Format Output"
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.first();\nconst topic = item.json.topic;\nconst today = item.json.today;\nconst finalDocument = item.json.final_document;\nconst outputFormat = item.json.output_format;\n\nconst cleanTopic = topic\n  .toLowerCase()\n  .replace(/[^a-z0-9 ]/g, '')\n  .replace(/ +/g, '-')\n  .substring(0, 50);\n\nconst formatSuffix = outputFormat === 'Full PRD' \n  ? 'prd' \n  : outputFormat === 'Pain Points Only' \n  ? 'pain-points' \n  : 'user-stories';\n\nconst filename = `${cleanTopic}-${formatSuffix}-${today}.md`;\nconst fullPath = `/Users/suparna_deshmukh/projects/product_research_agent/outputs/${filename}`;\n\nconst binaryData = await this.helpers.prepareBinaryData(\n  Buffer.from(finalDocument, 'utf8'),\n  filename,\n  'text/markdown'\n);\n\nreturn [{\n  json: {\n    topic: topic,\n    output_format: outputFormat,\n    today: today,\n    filename: filename,\n    full_path: fullPath,\n    word_count: item.json.word_count,\n    themes_found: item.json.themes_found,\n    prd_content: item.json.prd_content\n  },\n  binary: {\n    data: binaryData\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4864,
+        32
+      ],
+      "id": "338caff0-2394-4758-92e9-e84f40bf0539",
+      "name": "Save Markdown File"
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.first();\nconst topic = item.json.topic;\nconst today = item.json.today;\nconst outputFormat = item.json.output_format;\nconst filename = item.json.filename;\nconst wordCount = item.json.word_count;\nconst themesFound = item.json.themes_found;\n\n// Build clean topic for filename\nconst cleanTopic = topic\n  .toLowerCase()\n  .replace(/[^a-z0-9 ]/g, '')\n  .replace(/ +/g, '-')\n  .substring(0, 30);\n\n// Build unique log filename for this run\nconst logFilename = `log-${cleanTopic}-${today}.txt`;\nconst logPath = `/Users/suparna_deshmukh/projects/product_research_agent/logs/${logFilename}`;\n\n// Build detailed log entry\nconst logEntry = `PRODUCT RESEARCH AGENT — RUN LOG\n================================\nDate: ${today}\nTopic: ${topic}\nOutput Format: ${outputFormat}\nThemes Found: ${themesFound}\nWord Count: ${wordCount}\nOutput File: ${filename}\nOutput Path: /Users/suparna_deshmukh/projects/product_research_agent/outputs/${filename}\nStatus: Completed successfully\n================================\n`;\n\n// Convert log entry to binary\nconst binaryData = await this.helpers.prepareBinaryData(\n  Buffer.from(logEntry, 'utf8'),\n  logFilename,\n  'text/plain'\n);\n\nreturn [{\n  json: {\n    status: 'Log entry ready',\n    log_path: logPath,\n    log_filename: logFilename,\n    latest_entry: logEntry.trim()\n  },\n  binary: {\n    data: binaryData\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        5280,
+        32
+      ],
+      "id": "c327e55a-b64e-43be-9167-29b9f975d142",
+      "name": "History Log"
+    },
+    {
+      "parameters": {
+        "operation": "write",
+        "fileName": "/Users/suparna_deshmukh/projects/product_research_agent/logs/{{ $json.log_filename }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.readWriteFile",
+      "typeVersion": 1.1,
+      "position": [
+        5472,
+        32
+      ],
+      "id": "855b14ad-984c-4be6-8085-e3b738fd5103",
+      "name": "Write History Log"
+    },
+    {
+      "parameters": {
+        "operation": "write",
+        "fileName": "=/Users/suparna_deshmukh/projects/product_research_agent/outputs/{{ $json.filename }}",
+        "options": {
+          "append": true
+        }
+      },
+      "type": "n8n-nodes-base.readWriteFile",
+      "typeVersion": 1.1,
+      "position": [
+        5072,
+        32
+      ],
+      "id": "81c3863e-7e1b-48fc-ad5d-239cebe71ddb",
+      "name": "Write PRD File"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Set": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request": {
+      "main": [
+        [
+          {
+            "node": "Parse Keywords",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Form Trigger": {
+      "main": [
+        [
+          {
+            "node": "Set",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Keywords": {
+      "main": [
+        [
+          {
+            "node": "Fetch Subreddits",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Fetch HN Stories",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Subreddits": {
+      "main": [
+        [
+          {
+            "node": "Fetch Reddit Posts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Subreddits": {
+      "main": [
+        [
+          {
+            "node": "Parse Subreddits",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Reddit Posts": {
+      "main": [
+        [
+          {
+            "node": "Clean Reddit Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch HN Stories": {
+      "main": [
+        [
+          {
+            "node": "Clean HN Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Clean Reddit Data": {
+      "main": [
+        [
+          {
+            "node": "Merge All Sources",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Clean HN Data": {
+      "main": [
+        [
+          {
+            "node": "Merge All Sources",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge All Sources": {
+      "main": [
+        [
+          {
+            "node": "Build Classification Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Classification Prompt": {
+      "main": [
+        [
+          {
+            "node": "Classify Themes",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Classify Themes": {
+      "main": [
+        [
+          {
+            "node": "Parse Classifications",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Classifications": {
+      "main": [
+        [
+          {
+            "node": "Build Competitor Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Competitor Prompt": {
+      "main": [
+        [
+          {
+            "node": "Flag Competitors",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Flag Competitors": {
+      "main": [
+        [
+          {
+            "node": "Parse Competitor Flags",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Competitor Flags": {
+      "main": [
+        [
+          {
+            "node": "Build Relevance Prompts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Relevance Prompts": {
+      "main": [
+        [
+          {
+            "node": "Check Relevance",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Relevance": {
+      "main": [
+        [
+          {
+            "node": "Apply Relevance Filter",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Apply Relevance Filter": {
+      "main": [
+        [
+          {
+            "node": "Aggregate by Theme",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Aggregate by Theme": {
+      "main": [
+        [
+          {
+            "node": "Build PRD Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build PRD Prompt": {
+      "main": [
+        [
+          {
+            "node": "Generate PRD",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate PRD": {
+      "main": [
+        [
+          {
+            "node": "Parse PRD Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse PRD Response": {
+      "main": [
+        [
+          {
+            "node": "Format Output",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Output": {
+      "main": [
+        [
+          {
+            "node": "Save Markdown File",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save Markdown File": {
+      "main": [
+        [
+          {
+            "node": "Write PRD File",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "History Log": {
+      "main": [
+        [
+          {
+            "node": "Write History Log",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Write PRD File": {
+      "main": [
+        [
+          {
+            "node": "History Log",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "699ad3b9-d03b-48e7-a60d-4e91b4081c45",
+  "meta": {
+    "instanceId": "6c3014a340d7fd1ef23d61b66865181012301ef4e6055f135dc8aa0bc7479785"
+  },
+  "id": "ZomuOBGFZbrdanjB",
+  "tags": []
+}
